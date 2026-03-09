@@ -3,25 +3,41 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
     return res.status(500).json({ error: 'API key not configured' });
   }
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const { messages, max_tokens } = req.body;
+
+    const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
+        'Authorization': `Bearer ${apiKey}`,
       },
-      body: JSON.stringify(req.body),
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: messages,
+        max_tokens: max_tokens || 1000,
+        temperature: 0.3,
+      }),
     });
 
-    const data = await response.json();
-    return res.status(response.status).json(data);
+    const groqData = await groqResponse.json();
+
+    if (!groqResponse.ok) {
+      return res.status(groqResponse.status).json({ error: groqData.error?.message || 'Groq API error' });
+    }
+
+    // Convert Groq response to Anthropic-like format so frontend stays the same
+    const text = groqData.choices?.[0]?.message?.content || '';
+    return res.status(200).json({
+      content: [{ type: 'text', text }]
+    });
+
   } catch (error) {
-    return res.status(500).json({ error: 'Failed to contact Anthropic API' });
+    return res.status(500).json({ error: error.message || 'Failed to contact Groq API' });
   }
 }
