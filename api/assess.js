@@ -3,9 +3,17 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = process.env.GROQ_API_KEY;
+  const apiKey = process.env.GROQ_API_KEY || process.env.groq_api_key || process.env.GROQ_KEY;
+  
+  // Debug: log what env vars are available
+  const envDebug = Object.keys(process.env).filter(k => k.toLowerCase().includes('groq'));
+  
   if (!apiKey) {
-    return res.status(500).json({ error: 'API key not configured' });
+    return res.status(500).json({ 
+      error: 'API key not configured',
+      debug_groq_keys: envDebug,
+      debug_all_custom: Object.keys(process.env).filter(k => !['PATH','HOME','USER','SHELL','PWD','LANG','NODE_ENV','VERCEL','VERCEL_ENV','VERCEL_URL','VERCEL_REGION'].includes(k))
+    });
   }
 
   try {
@@ -31,7 +39,6 @@ export default async function handler(req, res) {
       return res.status(groqResponse.status).json({ error: groqData.error?.message || 'Groq API error' });
     }
 
-    // Convert Groq response to Anthropic-like format so frontend stays the same
     const text = groqData.choices?.[0]?.message?.content || '';
     return res.status(200).json({
       content: [{ type: 'text', text }]
