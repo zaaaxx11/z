@@ -3,7 +3,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = process.env.GROQ_API_KEY || process.env.groq_api_key || process.env.GROQ_KEY;
+  const apiKey = "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";
   
   // Debug: log what env vars are available
   const envDebug = Object.keys(process.env).filter(k => k.toLowerCase().includes('groq'));
