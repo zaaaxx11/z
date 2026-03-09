@@ -426,7 +426,7 @@ WAJIB balas HANYA dengan JSON berikut, tanpa teks lain:
           </h1>
           <p style={{ margin: 0, fontSize: 12, color: C.muted }}>
             Sistem Penilaian Rubrik Otomatis{" "}
-            <span style={{ color: C.accent2, fontWeight: 700 }}>by mafaza</span>
+            <span style={{ color: C.accent2, fontWeight: 700 }}>by zaaaxx</span>
           </p>
         </div>
         {/* Step indicator */}
