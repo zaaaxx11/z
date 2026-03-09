@@ -1,4 +1,4 @@
-# AI Assessment Tool — by mafaza
+# AI Assessment Tool — by zaaaxx
 
 Sistem penilaian rubrik otomatis berbasis AI (Claude) untuk dosen/guru.
 
