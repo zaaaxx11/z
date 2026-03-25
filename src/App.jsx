@@ -1,6 +1,26 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const API = "/api/assess";
+
+// ── localStorage persistence ────────────────────────────────────
+function usePersist(key, defaultValue) {
+  const [state, setState] = useState(() => {
+    try {
+      const saved = localStorage.getItem(key);
+      return saved ? JSON.parse(saved) : defaultValue;
+    } catch {
+      return defaultValue;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(key, JSON.stringify(state));
+    } catch {}
+  }, [key, state]);
+
+  return [state, setState];
+}
 
 // ── Design tokens ──────────────────────────────────────────────
 const C = {
@@ -323,22 +343,24 @@ function HasilPenilaian({ results, rubrik, onBack, onReset, loading, error }) {
 
 // ── MAIN APP ─────────────────────────────────────────────────────
 export default function App() {
-  const [step, setStep] = useState("rubrik");
-  const [title, setTitle] = useState("");
-  const [context, setContext] = useState("");
-  const [rubrik, setRubrik] = useState([{ id: uid(), nama: "", deskripsi: "", bobot: 100 }]);
-  const [students, setStudents] = useState([{ id: uid(), name: "", answer: "" }]);
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [step, setStep] = usePersist("ai_step", "rubrik");
+  const [title, setTitle] = usePersist("ai_title", "");
+  const [context, setContext] = usePersist("ai_context", "");
+  const [rubrik, setRubrik] = usePersist("ai_rubrik", [{ id: uid(), nama: "", deskripsi: "", bobot: 100 }]);
+  const [students, setStudents] = usePersist("ai_students", [{ id: uid(), name: "", answer: "" }]);
+  const [results, setResults] = usePersist("ai_results", []);
+  const [loading, setLoading] = useState(false); // loading tidak perlu persist
   const [error, setError] = useState("");
 
   const assess = async () => {
     setStep("hasil");
     setLoading(true);
     setError("");
+
     const init = students.map(s => ({ ...s, scores: null, kesimpulan: null }));
     setResults(init);
 
+    // FIX: gunakan array lokal dan update state setiap iterasi
     const updated = [...init];
 
     for (let i = 0; i < students.length; i++) {
@@ -372,50 +394,75 @@ WAJIB balas HANYA dengan JSON berikut, tanpa teks lain:
 }`;
 
       try {
-  const res = await fetch(API, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      max_tokens: 1500,
-      messages: [{ role: "user", content: prompt }],
-    }),
-  });
-  const data = await res.json();
+        const res = await fetch(API, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            max_tokens: 1500,
+            messages: [{ role: "user", content: prompt }],
+          }),
+        });
 
-  // Ambil raw text
-  let raw = "";
-  if (Array.isArray(data.content)) {
-    raw = data.content.map(c => c.text || "").join("");
-  } else if (typeof data.content === "string") {
-    raw = data.content;
-  }
+        if (!res.ok) {
+          throw new Error(`HTTP error ${res.status}: ${res.statusText}`);
+        }
 
-  // Extract JSON — strip markdown, cari { ... }
-  let parsed = null;
-  const stripped = raw.replace(/```json|```/g, "").trim();
-  try { parsed = JSON.parse(stripped); } catch {}
-  if (!parsed) {
-    const match = stripped.match(/\{[\s\S]*\}/);
-    if (match) parsed = JSON.parse(match[0]);
-  }
+        const data = await res.json();
 
-  if (!parsed?.scores) throw new Error("Struktur JSON tidak valid: " + raw.slice(0, 200));
+        // Ambil raw text dari berbagai format response
+        let raw = "";
+        if (Array.isArray(data.content)) {
+          raw = data.content.map(c => c.text || "").join("");
+        } else if (typeof data.content === "string") {
+          raw = data.content;
+        } else if (data.error) {
+          throw new Error(data.error.message || "API error");
+        }
 
-  updated[i] = { ...updated[i], scores: parsed.scores, kesimpulan: parsed.kesimpulan };
-} catch (e) {
-  console.error("Assess error murid", s.name, e.message);
-  updated[i] = { ...updated[i], scores: {}, kesimpulan: `Gagal: ${e.message}` };
-}
+        // Extract JSON — strip markdown, cari { ... }
+        let parsed = null;
+        const stripped = raw.replace(/```json|```/g, "").trim();
+        try {
+          parsed = JSON.parse(stripped);
+        } catch (_) {
+          // fallback: cari blok JSON pertama
+          const match = stripped.match(/\{[\s\S]*\}/);
+          if (match) {
+            try {
+              parsed = JSON.parse(match[0]);
+            } catch (_) {
+              // biarkan parsed tetap null
+            }
+          }
+        }
+
+        if (!parsed?.scores) {
+          throw new Error("Struktur JSON tidak valid: " + raw.slice(0, 200));
+        }
+
+        // FIX: update array lokal lalu set state agar UI langsung refresh per murid
+        updated[i] = { ...updated[i], scores: parsed.scores, kesimpulan: parsed.kesimpulan };
+        setResults([...updated]);
+
+      } catch (e) {
+        console.error("Assess error murid", s.name, e.message);
+        updated[i] = { ...updated[i], scores: {}, kesimpulan: `Gagal menilai: ${e.message}` };
+        setResults([...updated]);
+      }
+    }
 
     setLoading(false);
   };
 
   const reset = () => {
+    ["ai_step","ai_title","ai_context","ai_rubrik","ai_students","ai_results"].forEach(k => localStorage.removeItem(k));
     setStep("rubrik");
-    setTitle(""); setContext("");
+    setTitle("");
+    setContext("");
     setRubrik([{ id: uid(), nama: "", deskripsi: "", bobot: 100 }]);
     setStudents([{ id: uid(), name: "", answer: "" }]);
-    setResults([]); setError("");
+    setResults([]);
+    setError("");
   };
 
   const STEPS = ["rubrik", "jawaban", "hasil"];
