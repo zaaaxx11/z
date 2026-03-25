@@ -372,25 +372,40 @@ WAJIB balas HANYA dengan JSON berikut, tanpa teks lain:
 }`;
 
       try {
-        const res = await fetch(API, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "claude-sonnet-4-20250514",
-            max_tokens: 1000,
-            messages: [{ role: "user", content: prompt }],
-          }),
-        });
-        const data = await res.json();
-        const raw = data.content?.map(c => c.text || "").join("") || "";
-        const clean = raw.replace(/```json|```/g, "").trim();
-        const parsed = JSON.parse(clean);
-        updated[i] = { ...updated[i], scores: parsed.scores, kesimpulan: parsed.kesimpulan };
-      } catch (e) {
-        updated[i] = { ...updated[i], scores: {}, kesimpulan: "Gagal mendapatkan penilaian." };
-      }
-      setResults([...updated]);
-    }
+  const res = await fetch(API, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      max_tokens: 1500,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+  const data = await res.json();
+
+  // Ambil raw text
+  let raw = "";
+  if (Array.isArray(data.content)) {
+    raw = data.content.map(c => c.text || "").join("");
+  } else if (typeof data.content === "string") {
+    raw = data.content;
+  }
+
+  // Extract JSON — strip markdown, cari { ... }
+  let parsed = null;
+  const stripped = raw.replace(/```json|```/g, "").trim();
+  try { parsed = JSON.parse(stripped); } catch {}
+  if (!parsed) {
+    const match = stripped.match(/\{[\s\S]*\}/);
+    if (match) parsed = JSON.parse(match[0]);
+  }
+
+  if (!parsed?.scores) throw new Error("Struktur JSON tidak valid: " + raw.slice(0, 200));
+
+  updated[i] = { ...updated[i], scores: parsed.scores, kesimpulan: parsed.kesimpulan };
+} catch (e) {
+  console.error("Assess error murid", s.name, e.message);
+  updated[i] = { ...updated[i], scores: {}, kesimpulan: `Gagal: ${e.message}` };
+}
 
     setLoading(false);
   };
